@@ -20,6 +20,7 @@ export class CodeIndexConfigManager {
 	private geminiOptions?: { apiKey: string }
 	private mistralOptions?: { apiKey: string }
 	private vercelAiGatewayOptions?: { apiKey: string }
+	private bedrockOptions?: { region?: string; accessKeyId: string; secretAccessKey: string }
 	private qdrantUrl?: string = "http://localhost:6333"
 	private qdrantApiKey?: string
 	private searchMinScore?: number
@@ -71,6 +72,8 @@ export class CodeIndexConfigManager {
 		const geminiApiKey = this.contextProxy?.getSecret("codebaseIndexGeminiApiKey") ?? ""
 		const mistralApiKey = this.contextProxy?.getSecret("codebaseIndexMistralApiKey") ?? ""
 		const vercelAiGatewayApiKey = this.contextProxy?.getSecret("codebaseIndexVercelAiGatewayApiKey") ?? ""
+		const bedrockAccessKeyId = this.contextProxy?.getSecret("codeIndexBedrockAccessKeyId") ?? ""
+		const bedrockSecretAccessKey = this.contextProxy?.getSecret("codeIndexBedrockSecretAccessKey") ?? ""
 
 		// Update instance variables with configuration
 		this.codebaseIndexEnabled = codebaseIndexEnabled ?? true
@@ -129,6 +132,10 @@ export class CodeIndexConfigManager {
 		this.geminiOptions = geminiApiKey ? { apiKey: geminiApiKey } : undefined
 		this.mistralOptions = mistralApiKey ? { apiKey: mistralApiKey } : undefined
 		this.vercelAiGatewayOptions = vercelAiGatewayApiKey ? { apiKey: vercelAiGatewayApiKey } : undefined
+		this.bedrockOptions =
+			bedrockAccessKeyId && bedrockSecretAccessKey
+				? { accessKeyId: bedrockAccessKeyId, secretAccessKey: bedrockSecretAccessKey }
+				: undefined
 	}
 
 	/**
@@ -167,6 +174,8 @@ export class CodeIndexConfigManager {
 			geminiApiKey: this.geminiOptions?.apiKey ?? "",
 			mistralApiKey: this.mistralOptions?.apiKey ?? "",
 			vercelAiGatewayApiKey: this.vercelAiGatewayOptions?.apiKey ?? "",
+			bedrockAccessKeyId: this.bedrockOptions?.accessKeyId ?? "",
+			bedrockSecretAccessKey: this.bedrockOptions?.secretAccessKey ?? "",
 			qdrantUrl: this.qdrantUrl ?? "",
 			qdrantApiKey: this.qdrantApiKey ?? "",
 		}
@@ -233,6 +242,12 @@ export class CodeIndexConfigManager {
 			const apiKey = this.vercelAiGatewayOptions?.apiKey
 			const qdrantUrl = this.qdrantUrl
 			const isConfigured = !!(apiKey && qdrantUrl)
+			return isConfigured
+		} else if (this.embedderProvider === "bedrock") {
+			const accessKeyId = this.bedrockOptions?.accessKeyId
+			const secretAccessKey = this.bedrockOptions?.secretAccessKey
+			const qdrantUrl = this.qdrantUrl
+			const isConfigured = !!(accessKeyId && secretAccessKey && qdrantUrl)
 			return isConfigured
 		}
 		return false // Should not happen if embedderProvider is always set correctly
@@ -335,6 +350,20 @@ export class CodeIndexConfigManager {
 
 		if (prevVercelAiGatewayApiKey !== currentVercelAiGatewayApiKey) {
 			return true
+		}
+
+		if (prevProvider === "bedrock" || this.embedderProvider === "bedrock") {
+			const currentBedrockAccessKeyId = this.bedrockOptions?.accessKeyId ?? ""
+			const currentBedrockSecretAccessKey = this.bedrockOptions?.secretAccessKey ?? ""
+			const prevBedrockAccessKeyId = prev?.bedrockAccessKeyId ?? ""
+			const prevBedrockSecretAccessKey = prev?.bedrockSecretAccessKey ?? ""
+
+			if (
+				prevBedrockAccessKeyId !== currentBedrockAccessKeyId ||
+				prevBedrockSecretAccessKey !== currentBedrockSecretAccessKey
+			) {
+				return true
+			}
 		}
 
 		// Check for model dimension changes (generic for all providers)

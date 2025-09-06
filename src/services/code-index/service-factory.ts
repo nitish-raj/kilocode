@@ -5,6 +5,7 @@ import { OpenAICompatibleEmbedder } from "./embedders/openai-compatible"
 import { GeminiEmbedder } from "./embedders/gemini"
 import { MistralEmbedder } from "./embedders/mistral"
 import { VercelAiGatewayEmbedder } from "./embedders/vercel-ai-gateway"
+import { AmazonBedrockEmbeddingProvider } from "./embedders/bedrock"
 import { EmbedderProvider, getDefaultModelId, getModelDimension } from "../../shared/embeddingModels"
 import { QdrantVectorStore } from "./vector-store/qdrant-client"
 import { codeParser, DirectoryScanner, FileWatcher } from "./processors"
@@ -77,6 +78,24 @@ export class CodeIndexServiceFactory {
 				throw new Error(t("embeddings:serviceFactory.vercelAiGatewayConfigMissing"))
 			}
 			return new VercelAiGatewayEmbedder(config.vercelAiGatewayOptions.apiKey, config.modelId)
+		} else if (provider === "bedrock") {
+			if (!config.bedrockOptions?.region) {
+				throw new Error(t("embeddings:serviceFactory.bedrockConfigMissing"))
+			}
+			if (!config.modelId) {
+				throw new Error(t("embeddings:serviceFactory.modelIdMissing"))
+			}
+			return new AmazonBedrockEmbeddingProvider({
+				modelId: config.modelId,
+				region: config.bedrockOptions.region,
+				accessKeyId: config.bedrockOptions.accessKeyId,
+				secretAccessKey: config.bedrockOptions.secretAccessKey,
+				sessionToken: config.bedrockOptions.sessionToken,
+				endpointUrl: config.bedrockOptions.endpointUrl,
+				maxRetries: config.bedrockOptions.maxRetries,
+				maxConcurrency: config.bedrockOptions.maxConcurrency,
+				batchSize: config.bedrockOptions.batchSize,
+			})
 		}
 
 		throw new Error(

@@ -2,12 +2,10 @@ import {
 	BedrockRuntimeClient,
 	ConverseStreamCommand,
 	ConverseCommand,
-	BedrockRuntimeClientConfig,
 	ContentBlock,
 	Message,
 	SystemContentBlock,
 } from "@aws-sdk/client-bedrock-runtime"
-import { fromIni } from "@aws-sdk/credential-providers"
 import { Anthropic } from "@anthropic-ai/sdk"
 
 import {
@@ -34,6 +32,7 @@ import { getModelParams } from "../transform/model-params"
 import { shouldUseReasoningBudget } from "../../shared/api"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 
+import { createBedrockRuntimeClient } from "./bedrock-shared"
 /************************************************************************************
  *
  *     TYPES
@@ -218,42 +217,20 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 
 		this.costModelConfig = this.getModel()
 
-		// Extended type to support custom authentication properties
-		const clientConfig: BedrockRuntimeClientConfig & {
-			token?: { token: string }
-			authSchemePreference?: string[]
-		} = {
-			region: this.options.awsRegion,
-			// Add the endpoint configuration when specified and enabled
-			...(this.options.awsBedrockEndpoint &&
-				this.options.awsBedrockEndpointEnabled && { endpoint: this.options.awsBedrockEndpoint }),
-		}
-
-		if (this.options.awsUseApiKey && this.options.awsApiKey) {
-			// Use API key/token-based authentication if enabled and API key is set
-			clientConfig.token = { token: this.options.awsApiKey }
-			clientConfig.authSchemePreference = ["httpBearerAuth"] // Otherwise there's no end of credential problems.
-			clientConfig.requestHandler = {
-				// This should be the default anyway, but without setting something
-				// this provider fails to work with LiteLLM passthrough.
-				requestTimeout: 0,
-			}
-		} else if (this.options.awsUseProfile && this.options.awsProfile) {
-			// Use profile-based credentials if enabled and profile is set
-			clientConfig.credentials = fromIni({
-				profile: this.options.awsProfile,
-				ignoreCache: true,
-			})
-		} else if (this.options.awsAccessKey && this.options.awsSecretKey) {
-			// Use direct credentials if provided
-			clientConfig.credentials = {
-				accessKeyId: this.options.awsAccessKey,
-				secretAccessKey: this.options.awsSecretKey,
-				...(this.options.awsSessionToken ? { sessionToken: this.options.awsSessionToken } : {}),
-			}
-		}
-
-		this.client = new BedrockRuntimeClient(clientConfig)
+		// Use shared client creation function
+		this.client = createBedrockRuntimeClient({
+			awsRegion: this.options.awsRegion,
+			awsBedrockEndpoint: this.options.awsBedrockEndpoint,
+			awsBedrockEndpointEnabled: this.options.awsBedrockEndpointEnabled,
+			awsAccessKey: this.options.awsAccessKey,
+			awsSecretKey: this.options.awsSecretKey,
+			awsSessionToken: this.options.awsSessionToken,
+			awsProfile: this.options.awsProfile,
+			awsUseProfile: this.options.awsUseProfile,
+			awsApiKey: this.options.awsApiKey,
+			awsUseApiKey: this.options.awsUseApiKey,
+			awsCustomArn: this.options.awsCustomArn,
+		})
 	}
 
 	// Helper to guess model info from custom modelId string if not in bedrockModels

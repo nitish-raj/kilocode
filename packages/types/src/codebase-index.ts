@@ -22,7 +22,7 @@ export const codebaseIndexConfigSchema = z.object({
 	codebaseIndexEnabled: z.boolean().optional(),
 	codebaseIndexQdrantUrl: z.string().optional(),
 	codebaseIndexEmbedderProvider: z
-		.enum(["openai", "ollama", "openai-compatible", "gemini", "mistral", "vercel-ai-gateway"])
+		.enum(["openai", "ollama", "openai-compatible", "gemini", "mistral", "vercel-ai-gateway", "bedrock"])
 		.optional(),
 	codebaseIndexEmbedderBaseUrl: z.string().optional(),
 	codebaseIndexEmbedderModelId: z.string().optional(),
@@ -36,6 +36,14 @@ export const codebaseIndexConfigSchema = z.object({
 	// OpenAI Compatible specific fields
 	codebaseIndexOpenAiCompatibleBaseUrl: z.string().optional(),
 	codebaseIndexOpenAiCompatibleModelDimension: z.number().optional(),
+	// Bedrock specific fields
+	codeIndexBedrockModelId: z.string().optional(),
+	codeIndexBedrockRegion: z.string().optional(),
+	codeIndexBedrockEndpoint: z.string().url().optional(),
+	codeIndexBedrockEndpointEnabled: z.boolean().optional(),
+	codeIndexBedrockBatchSize: z.number().int().min(1).optional(),
+	codeIndexBedrockMaxRetries: z.number().int().min(0).optional(),
+	codeIndexBedrockTimeout: z.number().int().min(0).optional(),
 })
 
 export type CodebaseIndexConfig = z.infer<typeof codebaseIndexConfigSchema>
@@ -51,6 +59,7 @@ export const codebaseIndexModelsSchema = z.object({
 	gemini: z.record(z.string(), z.object({ dimension: z.number() })).optional(),
 	mistral: z.record(z.string(), z.object({ dimension: z.number() })).optional(),
 	"vercel-ai-gateway": z.record(z.string(), z.object({ dimension: z.number() })).optional(),
+	bedrock: z.record(z.string(), z.object({ dimension: z.number() })).optional(),
 })
 
 export type CodebaseIndexModels = z.infer<typeof codebaseIndexModelsSchema>
@@ -68,6 +77,8 @@ export const codebaseIndexProviderSchema = z.object({
 	codebaseIndexGeminiApiKey: z.string().optional(),
 	codebaseIndexMistralApiKey: z.string().optional(),
 	codebaseIndexVercelAiGatewayApiKey: z.string().optional(),
+	codeIndexBedrockAccessKeyId: z.string().optional(),
+	codeIndexBedrockSecretAccessKey: z.string().optional(),
 })
 
 export type CodebaseIndexProvider = z.infer<typeof codebaseIndexProviderSchema>

@@ -73,6 +73,13 @@ interface LocalCodeIndexSettings {
 	codebaseIndexGeminiApiKey?: string
 	codebaseIndexMistralApiKey?: string
 	codebaseIndexVercelAiGatewayApiKey?: string
+	codeIndexBedrockSessionToken?: string
+	codeIndexBedrockProfileName?: string
+	codeIndexBedrockApiKey?: string
+	codebaseIndexBedrockRegion?: string
+	codebaseIndexBedrockAuthMethod?: "credentials" | "profile" | "apikey"
+	codeIndexBedrockAccessKeyId?: string
+	codeIndexBedrockSecretAccessKey?: string
 }
 
 // Validation schema for codebase index settings
@@ -149,6 +156,13 @@ const createValidationSchema = (provider: EmbedderProvider, t: any) => {
 					.min(1, t("settings:codeIndex.validation.modelSelectionRequired")),
 			})
 
+		case "bedrock":
+			return baseSchema.extend({
+				codebaseIndexEmbedderModelId: z
+					.string()
+					.min(1, t("settings:codeIndex.validation.modelSelectionRequired")),
+			})
+
 		default:
 			return baseSchema
 	}
@@ -189,11 +203,18 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		codebaseIndexSearchMinScore: CODEBASE_INDEX_DEFAULTS.DEFAULT_SEARCH_MIN_SCORE,
 		codeIndexOpenAiKey: "",
 		codeIndexQdrantApiKey: "",
+		codeIndexBedrockSessionToken: "",
+		codeIndexBedrockProfileName: "",
+		codeIndexBedrockApiKey: "",
+		codebaseIndexBedrockRegion: "",
+		codebaseIndexBedrockAuthMethod: "credentials",
 		codebaseIndexOpenAiCompatibleBaseUrl: "",
 		codebaseIndexOpenAiCompatibleApiKey: "",
 		codebaseIndexGeminiApiKey: "",
 		codebaseIndexMistralApiKey: "",
 		codebaseIndexVercelAiGatewayApiKey: "",
+		codeIndexBedrockAccessKeyId: "",
+		codeIndexBedrockSecretAccessKey: "",
 	})
 
 	// Initial settings state - stores the settings when popover opens
@@ -229,6 +250,13 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 				codebaseIndexGeminiApiKey: "",
 				codebaseIndexMistralApiKey: "",
 				codebaseIndexVercelAiGatewayApiKey: "",
+				codeIndexBedrockAccessKeyId: "",
+				codeIndexBedrockSecretAccessKey: "",
+				codeIndexBedrockSessionToken: "",
+				codeIndexBedrockProfileName: "",
+				codeIndexBedrockApiKey: "",
+				codebaseIndexBedrockRegion: "",
+				codebaseIndexBedrockAuthMethod: "credentials" as const,
 			}
 			setInitialSettings(settings)
 			setCurrentSettings(settings)
@@ -238,9 +266,10 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		}
 	}, [codebaseIndexConfig])
 
-	// Request initial indexing status
+	// Request initial indexing status and secret status when popover opens
 	useEffect(() => {
 		if (open) {
+			// Request both immediately when popover opens
 			vscode.postMessage({ type: "requestIndexingStatus" })
 			vscode.postMessage({ type: "requestCodeIndexSecretStatus" })
 		}
@@ -258,9 +287,18 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		return () => window.removeEventListener("message", handleMessage)
 	}, [open])
 
-	// Use a ref to capture current settings for the save handler
+	// Use refs to capture current settings for the save handler and secret status handler
 	const currentSettingsRef = useRef(currentSettings)
-	currentSettingsRef.current = currentSettings
+	const initialSettingsRef = useRef(initialSettings)
+
+	// Update refs when state changes
+	useEffect(() => {
+		currentSettingsRef.current = currentSettings
+	}, [currentSettings])
+
+	useEffect(() => {
+		initialSettingsRef.current = initialSettings
+	}, [initialSettings])
 
 	// Listen for indexing status updates and save responses
 	useEffect(() => {
@@ -304,7 +342,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		return () => window.removeEventListener("message", handleMessage)
 	}, [t, cwd])
 
-	// Listen for secret status
+	// Listen for secret status - immediate updates for empty fields only
 	useEffect(() => {
 		const handleMessage = (event: MessageEvent) => {
 			if (event.data.type === "codeIndexSecretStatus") {
@@ -418,7 +456,9 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 					key === "codebaseIndexOpenAiCompatibleApiKey" ||
 					key === "codebaseIndexGeminiApiKey" ||
 					key === "codebaseIndexMistralApiKey" ||
-					key === "codebaseIndexVercelAiGatewayApiKey"
+					key === "codebaseIndexVercelAiGatewayApiKey" ||
+					key === "codeIndexBedrockAccessKeyId" ||
+					key === "codeIndexBedrockSecretAccessKey"
 				) {
 					dataToValidate[key] = "placeholder-valid"
 				}
@@ -668,6 +708,9 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 												</SelectItem>
 												<SelectItem value="vercel-ai-gateway">
 													{t("settings:codeIndex.vercelAiGatewayProvider")}
+												</SelectItem>
+												<SelectItem value="bedrock">
+													{t("settings:codeIndex.bedrockProvider")}
 												</SelectItem>
 											</SelectContent>
 										</Select>

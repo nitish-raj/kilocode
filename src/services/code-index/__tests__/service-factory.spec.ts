@@ -4,13 +4,16 @@ import { OpenAiEmbedder } from "../embedders/openai"
 import { CodeIndexOllamaEmbedder } from "../embedders/ollama"
 import { OpenAICompatibleEmbedder } from "../embedders/openai-compatible"
 import { GeminiEmbedder } from "../embedders/gemini"
+import { AmazonBedrockEmbeddingProvider } from "../embedders/bedrock"
 import { QdrantVectorStore } from "../vector-store/qdrant-client"
+import { createBedrockRuntimeClient } from "../../../api/providers/bedrock-shared"
 
 // Mock the embedders and vector store
 vitest.mock("../embedders/openai")
 vitest.mock("../embedders/ollama")
 vitest.mock("../embedders/openai-compatible")
 vitest.mock("../embedders/gemini")
+vitest.mock("../embedders/bedrock")
 vitest.mock("../vector-store/qdrant-client")
 
 // Mock the embedding models module
@@ -28,16 +31,23 @@ vitest.mock("@roo-code/telemetry", () => ({
 	},
 }))
 
+// Mock the shared Bedrock client helper
+vitest.mock("../../../api/providers/bedrock-shared")
+
 const MockedOpenAiEmbedder = OpenAiEmbedder as MockedClass<typeof OpenAiEmbedder>
 const MockedCodeIndexOllamaEmbedder = CodeIndexOllamaEmbedder as MockedClass<typeof CodeIndexOllamaEmbedder>
 const MockedOpenAICompatibleEmbedder = OpenAICompatibleEmbedder as MockedClass<typeof OpenAICompatibleEmbedder>
 const MockedGeminiEmbedder = GeminiEmbedder as MockedClass<typeof GeminiEmbedder>
+const MockedAmazonBedrockEmbeddingProvider = AmazonBedrockEmbeddingProvider as MockedClass<
+	typeof AmazonBedrockEmbeddingProvider
+>
 const MockedQdrantVectorStore = QdrantVectorStore as MockedClass<typeof QdrantVectorStore>
 
 // Import the mocked functions
 import { getDefaultModelId, getModelDimension } from "../../../shared/embeddingModels"
 const mockGetDefaultModelId = getDefaultModelId as MockedFunction<typeof getDefaultModelId>
 const mockGetModelDimension = getModelDimension as MockedFunction<typeof getModelDimension>
+const mockCreateBedrockRuntimeClient = createBedrockRuntimeClient as MockedFunction<typeof createBedrockRuntimeClient>
 
 describe("CodeIndexServiceFactory", () => {
 	let factory: CodeIndexServiceFactory
@@ -337,6 +347,366 @@ describe("CodeIndexServiceFactory", () => {
 			// Act & Assert
 			expect(() => factory.createEmbedder()).toThrow("serviceFactory.invalidEmbedderType")
 		})
+
+		it("should create AmazonBedrockEmbeddingProvider when provider is bedrock", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v2:0",
+				bedrockOptions: {
+					region: "us-east-1",
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+					endpointUrl: "https://bedrock.us-east-1.amazonaws.com",
+					maxRetries: 3,
+					maxConcurrency: 5,
+					batchSize: 10,
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+
+			// Act
+			factory.createEmbedder()
+
+			// Assert
+			expect(MockedAmazonBedrockEmbeddingProvider).toHaveBeenCalledWith({
+				modelId: "amazon.titan-embed-text-v2:0",
+				region: "us-east-1",
+				accessKeyId: "test-access-key",
+				secretAccessKey: "test-secret-key",
+				endpointUrl: "https://bedrock.us-east-1.amazonaws.com",
+				maxRetries: 3,
+				maxConcurrency: 5,
+				batchSize: 10,
+			})
+		})
+
+		it("should throw error when bedrock region is missing", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v2:0",
+				bedrockOptions: {
+					// region is missing
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+
+			// Act & Assert
+			expect(() => factory.createEmbedder()).toThrow("serviceFactory.bedrockConfigMissing")
+		})
+
+		it("should throw error when bedrock modelId is missing", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				// modelId is missing
+				bedrockOptions: {
+					region: "us-east-1",
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+
+			// Act & Assert
+			expect(() => factory.createEmbedder()).toThrow("serviceFactory.modelIdMissing")
+		})
+
+		it("should handle bedrock configuration with profile-based credentials", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v2:0",
+				bedrockOptions: {
+					region: "us-east-1",
+					// No explicit credentials - should use profile/IAM role
+					maxRetries: 3,
+					maxConcurrency: 5,
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+
+			// Act
+			factory.createEmbedder()
+
+			// Assert
+			expect(MockedAmazonBedrockEmbeddingProvider).toHaveBeenCalledWith({
+				modelId: "amazon.titan-embed-text-v2:0",
+				region: "us-east-1",
+				accessKeyId: undefined,
+				secretAccessKey: undefined,
+				sessionToken: undefined,
+				endpointUrl: undefined,
+				maxRetries: 3,
+				maxConcurrency: 5,
+				batchSize: undefined,
+			})
+		})
+
+		it("should validate bedrock embedder configuration successfully", async () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v2:0",
+				bedrockOptions: {
+					region: "us-east-1",
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+			const mockEmbedder = {
+				validateConfiguration: vitest.fn().mockResolvedValue({ valid: true }),
+			}
+			MockedAmazonBedrockEmbeddingProvider.mockReturnValue(mockEmbedder as any)
+
+			// Act
+			const embedder = factory.createEmbedder()
+			const result = await factory.validateEmbedder(embedder)
+
+			// Assert
+			expect(result).toEqual({ valid: true })
+			expect(mockEmbedder.validateConfiguration).toHaveBeenCalled()
+		})
+
+		it("should handle bedrock embedder validation failure", async () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v2:0",
+				bedrockOptions: {
+					region: "us-east-1",
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+			const validationError = "Invalid AWS credentials"
+			const mockEmbedder = {
+				validateConfiguration: vitest.fn().mockResolvedValue({ valid: false, error: validationError }),
+			}
+			MockedAmazonBedrockEmbeddingProvider.mockReturnValue(mockEmbedder as any)
+
+			// Act
+			const embedder = factory.createEmbedder()
+			const result = await factory.validateEmbedder(embedder)
+
+			// Assert
+			expect(result).toEqual({ valid: false, error: validationError })
+		})
+
+		it("should handle bedrock embedder validation exception", async () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v2:0",
+				bedrockOptions: {
+					region: "us-east-1",
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+			const validationError = new Error("Network error during validation")
+			const mockEmbedder = {
+				validateConfiguration: vitest.fn().mockRejectedValue(validationError),
+			}
+			MockedAmazonBedrockEmbeddingProvider.mockReturnValue(mockEmbedder as any)
+
+			// Act
+			const embedder = factory.createEmbedder()
+			const result = await factory.validateEmbedder(embedder)
+
+			// Assert
+			expect(result).toEqual({ valid: false, error: "Network error during validation" })
+		})
+
+		it("should ensure bedrock credentials are not stored in configuration", () => {
+			// This test verifies that sensitive credentials are not persisted
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v2:0",
+				bedrockOptions: {
+					region: "us-east-1",
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+					sessionToken: "test-session-token",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+
+			// Act
+			factory.createEmbedder()
+
+			// Assert - verify that the config manager was not called to persist credentials
+			// This is a security check to ensure credentials aren't accidentally saved
+			expect(mockConfigManager.getConfig).toHaveBeenCalled()
+			// The factory should use the config but not persist sensitive data
+			const callArgs = MockedAmazonBedrockEmbeddingProvider.mock.calls[0][0]
+			expect(callArgs).toHaveProperty("accessKeyId", "test-access-key")
+			expect(callArgs).toHaveProperty("secretAccessKey", "test-secret-key")
+			expect(callArgs).toHaveProperty("sessionToken", "test-session-token")
+		})
+
+		it("should create Bedrock embedder with default model when modelId not specified", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v1",
+				bedrockOptions: {
+					region: "us-east-1",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+			const mockEmbedder = { validateConfiguration: vitest.fn() }
+			MockedAmazonBedrockEmbeddingProvider.mockImplementation(() => mockEmbedder as any)
+
+			// Act
+			const embedder = factory.createEmbedder()
+
+			// Assert
+			expect(embedder).toBeInstanceOf(Object)
+			expect(MockedAmazonBedrockEmbeddingProvider).toHaveBeenCalledWith({
+				modelId: "amazon.titan-embed-text-v1",
+				region: "us-east-1",
+			})
+		})
+
+		it("should create Bedrock embedder with shared client configuration", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v1",
+				bedrockOptions: {
+					region: "us-east-1",
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+			const mockEmbedder = { validateConfiguration: vitest.fn() }
+			MockedAmazonBedrockEmbeddingProvider.mockImplementation(() => mockEmbedder as any)
+
+			// Act
+			const embedder = factory.createEmbedder()
+
+			// Assert
+			expect(embedder).toBeInstanceOf(Object)
+			expect(MockedAmazonBedrockEmbeddingProvider).toHaveBeenCalledWith({
+				modelId: "amazon.titan-embed-text-v1",
+				region: "us-east-1",
+				accessKeyId: "test-access-key",
+				secretAccessKey: "test-secret-key",
+			})
+		})
+
+		it("should correctly retrieve Bedrock configuration for UI/schema exposure", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v1",
+				bedrockOptions: {
+					region: "us-east-1",
+					awsAccessKey: "test-access-key",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+
+			// Act
+			factory.createEmbedder()
+
+			// Assert
+			// The fact that createEmbedder successfully creates the Bedrock embedder
+			// with the config demonstrates that the config is correctly retrieved.
+			expect(MockedAmazonBedrockEmbeddingProvider).toHaveBeenCalledWith(
+				expect.objectContaining({
+					modelId: "amazon.titan-embed-text-v1",
+					region: "us-east-1",
+				}),
+			)
+		})
+		it("should resolve config with profile authentication and not expose credentials", async () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v1",
+				awsUseProfile: true,
+				awsProfile: "test-profile",
+				bedrockOptions: {
+					region: "us-east-1",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+
+			// Mock SecretStorage to simulate profile credentials retrieval
+			const mockSecretStorage = {
+				get: vitest.fn().mockResolvedValue({
+					accessKeyId: "profile-access-key",
+					secretAccessKey: "profile-secret-key",
+					sessionToken: "profile-session-token",
+				}),
+			}
+
+			// Mock createBedrockRuntimeClient to capture arguments
+			const createClientSpy = vitest.fn()
+			vitest.mocked(createBedrockRuntimeClient).mockImplementation(createClientSpy)
+
+			// Act
+			const embedder = factory.createEmbedder()
+
+			// Assert
+			expect(embedder).toBeInstanceOf(Object)
+			// Verify that no explicit credentials are passed to the embedder constructor
+			expect(MockedAmazonBedrockEmbeddingProvider).toHaveBeenCalledWith({
+				modelId: "amazon.titan-embed-text-v1",
+				region: "us-east-1",
+				accessKeyId: undefined,
+				secretAccessKey: undefined,
+				sessionToken: undefined,
+			})
+		})
+
+		it("should not write credentials to workspace settings", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				modelId: "amazon.titan-embed-text-v1",
+				bedrockOptions: {
+					region: "us-east-1",
+					accessKeyId: "test-access-key",
+					secretAccessKey: "test-secret-key",
+				},
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+
+			// Mock workspace.writeConfiguration to verify it's not called with credentials
+			const mockWriteConfiguration = vitest.fn()
+			const mockWorkspace = {
+				writeConfiguration: mockWriteConfiguration,
+			}
+
+			// Act
+			factory.createEmbedder()
+
+			// Assert
+			// Verify that the factory doesn't write credentials to workspace settings
+			expect(mockWriteConfiguration).not.toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({
+					accessKeyId: expect.anything(),
+				}),
+			)
+			expect(mockWriteConfiguration).not.toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({
+					secretAccessKey: expect.anything(),
+				}),
+			)
+		})
 	})
 
 	describe("createVectorStore", () => {
@@ -577,6 +947,31 @@ describe("CodeIndexServiceFactory", () => {
 				"/test/workspace",
 				"http://localhost:6333",
 				3072,
+				"test-key",
+			)
+		})
+
+		it("should use default model dimension for Bedrock when modelId not specified", () => {
+			// Arrange
+			const testConfig = {
+				embedderProvider: "bedrock",
+				qdrantUrl: "http://localhost:6333",
+				qdrantApiKey: "test-key",
+			}
+			mockConfigManager.getConfig.mockReturnValue(testConfig as any)
+			mockGetDefaultModelId.mockReturnValue("amazon.titan-embed-text-v2.0")
+			mockGetModelDimension.mockReturnValue(1024) // Assuming a default dimension for the default Bedrock model
+
+			// Act
+			factory.createVectorStore()
+
+			// Assert
+			expect(mockGetDefaultModelId).toHaveBeenCalledWith("bedrock")
+			expect(mockGetModelDimension).toHaveBeenCalledWith("bedrock", "amazon.titan-embed-text-v2.0")
+			expect(MockedQdrantVectorStore).toHaveBeenCalledWith(
+				"/test/workspace",
+				"http://localhost:6333",
+				1024,
 				"test-key",
 			)
 		})

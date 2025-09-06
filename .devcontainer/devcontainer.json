@@ -2,6 +2,10 @@
 	"name": "Kilo Code Development",
 	"dockerFile": "Dockerfile",
 	"context": "..",
+	"build": {
+		"network": "host"
+	},
+	"runArgs": ["--network=host"],
 
 	"features": {
 		"ghcr.io/devcontainers/features/git:1": {},
@@ -17,7 +21,8 @@
 				"bradlc.vscode-tailwindcss",
 				"connor4312.esbuild-problem-matchers",
 				"yoavbls.pretty-ts-errors",
-				"ms-vscode.vscode-typescript-next"
+				"ms-vscode.vscode-typescript-next",
+				"kilocode.kilo-code"
 			],
 			"settings": {
 				"terminal.integrated.defaultProfile.linux": "bash",
